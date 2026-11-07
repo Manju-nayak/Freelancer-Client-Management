@@ -1,264 +1,250 @@
+
 "use client";
 
+import { Suspense, useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { apiRequest } from "@/lib/api";
 
-const initialTasks = [
-  {
-    id: 1,
-    title: "React Website Development",
-    client: "Tech Solutions",
-    deadline: "15 Nov 2026",
-    budget: "₹25,000",
-    progress: 65,
-    status: "In Progress",
-  },
-  {
-    id: 2,
-    title: "Machine Learning Model",
-    client: "Data Innovations",
-    deadline: "20 Nov 2026",
-    budget: "₹40,000",
-    progress: 35,
-    status: "In Progress",
-  },
-  {
-    id: 3,
-    title: "UI/UX Design",
-    client: "Creative Studio",
-    deadline: "10 Nov 2026",
-    budget: "₹15,000",
-    progress: 100,
-    status: "Completed",
-  },
-];
+interface Freelancer {
+  _id: string;
+  name: string;
+  email: string;
+}
 
-export default function MyTasksPage() {
-  const [tasks, setTasks] = useState(initialTasks);
+interface Proposal {
+  _id: string;
+  freelancer: Freelancer;
+  status: string;
+}
 
-  const updateProgress = (id: number) => {
-    setTasks((previous) =>
-      previous.map((task) => {
-        if (task.id === id && task.progress < 100) {
-          const newProgress = Math.min(task.progress + 10, 100);
+function TaskAssignmentContent() {
+  const params = useParams();
+  const projectId = params.projectId as string;
 
-          return {
-            ...task,
-            progress: newProgress,
-            status:
-              newProgress === 100 ? "Completed" : "In Progress",
-          };
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [assignedTo, setAssignedTo] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [priority, setPriority] = useState("medium");
+
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function fetchProposals() {
+      try {
+        const response = await apiRequest<{
+          proposals: Proposal[];
+        }>(`/api/proposals/project/${projectId}`);
+
+        const accepted = (response.proposals || []).filter(
+          (proposal) => proposal.status === "accepted"
+        );
+
+        setProposals(accepted);
+
+        if (accepted.length > 0) {
+          setAssignedTo(accepted[0].freelancer._id);
         }
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to load proposals"
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
 
-        return task;
-      })
-    );
-  };
+    fetchProposals();
+  }, [projectId]);
 
-  const completed = tasks.filter(
-    (task) => task.status === "Completed"
-  ).length;
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
+    setMessage("");
 
-  const active = tasks.filter(
-    (task) => task.status === "In Progress"
-  ).length;
+    if (!assignedTo) {
+      setError("Please select a freelancer.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await apiRequest("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId,
+          assignedTo,
+          title,
+          description,
+          deadline,
+          priority,
+        }),
+      });
+
+      setMessage("Task assigned successfully!");
+      setTitle("");
+      setDescription("");
+      setDeadline("");
+      setPriority("medium");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to assign task"
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return <p className="p-8">Loading accepted proposals...</p>;
+  }
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-gray-50 p-8">
+      <div className="mx-auto max-w-3xl">
+        <h1 className="text-3xl font-bold text-gray-900">
+          Assign Tasks
+        </h1>
+        <p className="mt-2 text-gray-600">
+          Assign work to a freelancer whose proposal you accepted.
+        </p>
 
-      {/* HEADER */}
-
-      <header className="bg-white border-b px-6 md:px-10 py-5 flex justify-between items-center">
-
-        <Link href="/" className="text-2xl font-bold text-indigo-600">
-          FreelanceHub.
-        </Link>
-
-        <Link
-          href="/freelancer/dashboard"
-          className="text-indigo-600 font-semibold hover:text-indigo-800"
-        >
-          ← Dashboard
-        </Link>
-
-      </header>
-
-      <div className="max-w-7xl mx-auto px-5 md:px-10 py-10">
-
-        {/* TITLE */}
-
-        <div className="mb-8">
-
-          <h1 className="text-3xl font-bold text-gray-900">
-            My Tasks
-          </h1>
-
-          <p className="text-gray-500 mt-2">
-            Manage your projects, track progress and meet deadlines.
+        {error && (
+          <p className="mt-5 rounded-lg bg-red-100 p-4 text-red-700">
+            {error}
           </p>
+        )}
 
-        </div>
-
-        {/* SUMMARY CARDS */}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border">
-            <p className="text-gray-500">Total Tasks</p>
-            <h2 className="text-3xl font-bold text-indigo-600 mt-2">
-              {tasks.length}
-            </h2>
-            <p className="text-sm text-gray-500 mt-2">
-              All assigned projects
-            </p>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border">
-            <p className="text-gray-500">In Progress</p>
-            <h2 className="text-3xl font-bold text-orange-500 mt-2">
-              {active}
-            </h2>
-            <p className="text-sm text-gray-500 mt-2">
-              Currently working
-            </p>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border">
-            <p className="text-gray-500">Completed</p>
-            <h2 className="text-3xl font-bold text-green-600 mt-2">
-              {completed}
-            </h2>
-            <p className="text-sm text-gray-500 mt-2">
-              Successfully delivered
-            </p>
-          </div>
-
-        </div>
-
-        {/* TASK LIST */}
-
-        <div className="mb-6">
-
-          <h2 className="text-xl font-bold text-gray-900">
-            Assigned Projects
-          </h2>
-
-          <p className="text-gray-500 mt-1">
-            Track and update your project progress.
+        {message && (
+          <p className="mt-5 rounded-lg bg-green-100 p-4 text-green-700">
+            {message}
           </p>
+        )}
 
-        </div>
-
-        <div className="space-y-6">
-
-          {tasks.map((task) => (
-
-            <div
-              key={task.id}
-              className="bg-white rounded-xl border shadow-sm p-6"
+        {proposals.length === 0 ? (
+          <div className="mt-8 rounded-xl bg-white p-6 shadow">
+            <p className="text-gray-700">
+              No accepted proposals found for this project.
+            </p>
+            <Link
+              href="/client/projects"
+              className="mt-4 inline-block text-blue-600 hover:underline"
             >
-
-              <div className="flex flex-col md:flex-row justify-between gap-4">
-
-                <div>
-
-                  <h3 className="text-xl font-bold text-gray-900">
-                    {task.title}
-                  </h3>
-
-                  <p className="text-gray-500 mt-2">
-                    Client: {task.client}
-                  </p>
-
-                </div>
-
-                <span
-                  className={`h-fit px-4 py-2 rounded-full text-sm font-semibold ${
-                    task.status === "Completed"
-                      ? "bg-green-100 text-green-700"
-                      : "bg-orange-100 text-orange-700"
-                  }`}
-                >
-                  {task.status}
-                </span>
-
-              </div>
-
-              {/* PROJECT DETAILS */}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-
-                <div>
-                  <p className="text-gray-500 text-sm">
-                    Project Budget
-                  </p>
-                  <p className="font-bold text-gray-900 mt-1">
-                    {task.budget}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-gray-500 text-sm">
-                    Deadline
-                  </p>
-                  <p className="font-bold text-gray-900 mt-1">
-                    {task.deadline}
-                  </p>
-                </div>
-
-              </div>
-
-              {/* PROGRESS */}
-
-              <div className="mt-7">
-
-                <div className="flex justify-between mb-3">
-
-                  <p className="font-semibold text-gray-800">
-                    Project Progress
-                  </p>
-
-                  <p className="font-bold text-indigo-600">
-                    {task.progress}%
-                  </p>
-
-                </div>
-
-                <div className="w-full bg-gray-200 rounded-full h-3">
-
-                  <div
-                    className="bg-indigo-600 h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${task.progress}%` }}
-                  />
-
-                </div>
-
-              </div>
-
-              {/* UPDATE BUTTON */}
-
-              <div className="mt-6 flex justify-end">
-
-                <button
-                  onClick={() => updateProgress(task.id)}
-                  disabled={task.progress === 100}
-                  className="bg-indigo-600 text-white px-5 py-3 rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-green-600 disabled:cursor-not-allowed transition"
-                >
-                  {task.progress === 100
-                    ? "✓ Completed"
-                    : "Update Progress +10%"}
-                </button>
-
-              </div>
-
+              Back to My Projects
+            </Link>
+          </div>
+        ) : (
+          <form
+            onSubmit={handleSubmit}
+            className="mt-8 space-y-5 rounded-xl bg-white p-6 shadow"
+          >
+            <div>
+              <label className="mb-2 block font-medium text-gray-700">
+                Select Freelancer
+              </label>
+              <select
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                required
+                className="w-full rounded-lg border border-gray-300 p-3"
+              >
+                {proposals.map((proposal) => (
+                  <option
+                    key={proposal._id}
+                    value={proposal.freelancer._id}
+                  >
+                    {proposal.freelancer.name} ({proposal.freelancer.email})
+                  </option>
+                ))}
+              </select>
             </div>
 
-          ))}
+            <div>
+              <label className="mb-2 block font-medium text-gray-700">
+                Task Title
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                placeholder="e.g. Design the homepage"
+                className="w-full rounded-lg border border-gray-300 p-3"
+              />
+            </div>
 
-        </div>
+            <div>
+              <label className="mb-2 block font-medium text-gray-700">
+                Task Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={4}
+                placeholder="Describe the work to be completed..."
+                className="w-full rounded-lg border border-gray-300 p-3"
+              />
+            </div>
 
+            <div>
+              <label className="mb-2 block font-medium text-gray-700">
+                Deadline
+              </label>
+              <input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                required
+                className="w-full rounded-lg border border-gray-300 p-3"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block font-medium text-gray-700">
+                Priority
+              </label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 p-3"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {submitting ? "Assigning..." : "Assign Task"}
+            </button>
+          </form>
+        )}
+
+        <Link
+          href="/client/projects"
+          className="mt-6 inline-block text-blue-600 hover:underline"
+        >
+          ← Back to My Projects
+        </Link>
       </div>
-
     </main>
+  );
+}
+
+export default function TaskAssignmentPage() {
+  return (
+    <Suspense fallback={<p className="p-8">Loading task assignment...</p>}>
+      <TaskAssignmentContent />
+    </Suspense>
   );
 }

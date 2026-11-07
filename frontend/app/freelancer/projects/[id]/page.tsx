@@ -1,80 +1,46 @@
+
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useParams } from "next/navigation";
+import { useEffect, useState, FormEvent, Suspense } from "react";
 import Link from "next/link";
+import { apiRequest } from "@/lib/api";
 
-const projects = [
-  {
-    id: 1,
-    title: "React Website Development",
-    category: "Web Development",
-    description:
-      "Build a modern, responsive business website using React and Tailwind CSS. The website should include a homepage, about page, services section and contact form.",
-    budget: "₹25,000",
-    deadline: "15 Nov 2026",
-    skills: ["React", "CSS", "JavaScript"],
-  },
-  {
-    id: 2,
-    title: "Machine Learning Model",
-    category: "AI & Machine Learning",
-    description:
-      "Develop a machine learning model for customer prediction and data analysis. The freelancer should perform data preprocessing, model training and evaluation.",
-    budget: "₹40,000",
-    deadline: "20 Nov 2026",
-    skills: ["Python", "Machine Learning", "Pandas"],
-  },
-  {
-    id: 3,
-    title: "Mobile Application Design",
-    category: "Mobile Development",
-    description:
-      "Design and develop a modern mobile application with an attractive user interface and smooth navigation.",
-    budget: "₹35,000",
-    deadline: "25 Nov 2026",
-    skills: ["Flutter", "Dart", "Firebase"],
-  },
-  {
-    id: 4,
-    title: "UI/UX Dashboard Design",
-    category: "UI/UX Design",
-    description:
-      "Create an attractive dashboard design for a project management application using modern design principles.",
-    budget: "₹15,000",
-    deadline: "10 Dec 2026",
-    skills: ["Figma", "UI Design", "UX"],
-  },
-  {
-    id: 5,
-    title: "Node.js Backend Development",
-    category: "Web Development",
-    description:
-      "Develop REST APIs and database integration for an e-commerce application.",
-    budget: "₹30,000",
-    deadline: "18 Nov 2026",
-    skills: ["Node.js", "Express", "MongoDB"],
-  },
-  {
-    id: 6,
-    title: "Python Data Analysis",
-    category: "Data Science",
-    description:
-      "Analyze business datasets and generate meaningful visualizations and reports.",
-    budget: "₹20,000",
-    deadline: "30 Nov 2026",
-    skills: ["Python", "SQL", "Power BI"],
-  },
-];
+interface Project {
+  _id: string;
+  title: string;
+  category: string;
+  description: string;
+  budget: number;
+  budgetType: string;
+  deadline: string;
+  skillsRequired: string[];
+  client?: {
+    name: string;
+    email: string;
+  };
+}
 
-export default function ProjectDetails() {
+interface ProjectResponse {
+  success: boolean;
+  project: Project;
+}
 
+interface ProposalResponse {
+  success: boolean;
+  message: string;
+}
+
+function ProjectDetailsContent()  {
   const params = useParams();
-  const router = useRouter();
+  const projectId = params.id as string;
 
-  const projectId = Number(params.id);
-
-  const project = projects.find((p) => p.id === projectId);
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [proposalError, setProposalError] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [proposal, setProposal] = useState({
     amount: "",
@@ -82,34 +48,80 @@ export default function ProjectDetails() {
     coverLetter: "",
   });
 
-  const [submitted, setSubmitted] = useState(false);
+  useEffect(() => {
+    async function fetchProject() {
+      try {
+        const data = await apiRequest<ProjectResponse>(
+          `/api/projects/${projectId}`
+        );
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    if (
-      !proposal.amount ||
-      !proposal.deliveryDays ||
-      !proposal.coverLetter.trim()
-    ) {
-      alert("Please complete all fields.");
-      return;
+        setProject(data.project);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load project."
+        );
+      } finally {
+        setLoading(false);
+      }
     }
 
-    setSubmitted(true);
-  };
+    if (projectId) {
+      fetchProject();
+    }
+  }, [projectId]);
 
-  if (!project) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    setProposalError("");
+    setSubmitting(true);
+
+    try {
+      const data = await apiRequest<ProposalResponse>(
+        "/api/proposals",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            projectId,
+            proposedBudget: Number(proposal.amount),
+            estimatedDuration: `${proposal.deliveryDays} days`,
+            coverLetter: proposal.coverLetter,
+          }),
+        }
+      );
+
+      setSubmitted(true);
+    } catch (err) {
+      setProposalError(
+        err instanceof Error
+          ? err.message
+          : "Failed to submit proposal."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-slate-50">
+        <p className="text-gray-600">Loading project details...</p>
+      </main>
+    );
+  }
+
+  if (error || !project) {
     return (
       <main className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="bg-white p-10 rounded-xl shadow text-center">
-
           <h1 className="text-2xl font-bold text-gray-900">
             Project Not Found
           </h1>
 
           <p className="text-gray-500 mt-3">
-            This project does not exist.
+            {error || "This project does not exist."}
           </p>
 
           <Link
@@ -118,7 +130,6 @@ export default function ProjectDetails() {
           >
             Back to Projects
           </Link>
-
         </div>
       </main>
     );
@@ -129,7 +140,6 @@ export default function ProjectDetails() {
 
       {/* HEADER */}
       <header className="bg-white border-b px-6 md:px-10 py-5 flex justify-between items-center">
-
         <Link
           href="/freelancer/dashboard"
           className="text-2xl font-bold text-indigo-600"
@@ -143,15 +153,11 @@ export default function ProjectDetails() {
         >
           ← Browse Projects
         </Link>
-
       </header>
-
 
       <section className="max-w-6xl mx-auto px-6 py-10">
 
-        {/* PAGE TITLE */}
         <div className="mb-8">
-
           <h1 className="text-3xl font-bold text-gray-900">
             Project Details
           </h1>
@@ -159,9 +165,7 @@ export default function ProjectDetails() {
           <p className="text-gray-500 mt-2">
             Review project requirements and submit your proposal.
           </p>
-
         </div>
-
 
         <div className="grid lg:grid-cols-3 gap-8">
 
@@ -182,6 +186,10 @@ export default function ProjectDetails() {
                 {project.description}
               </p>
 
+              <p className="text-gray-500 mt-4">
+                Posted by: {project.client?.name || "Client"}
+              </p>
+
               <div className="grid sm:grid-cols-2 gap-6 mt-8 border-t pt-6">
 
                 <div>
@@ -190,8 +198,14 @@ export default function ProjectDetails() {
                   </p>
 
                   <h3 className="text-2xl font-bold text-green-600 mt-2">
-                    {project.budget}
+                    ₹{project.budget.toLocaleString("en-IN")}
                   </h3>
+
+                  <p className="text-sm text-gray-500">
+                    {project.budgetType === "fixed"
+                      ? "Fixed Price"
+                      : "Hourly"}
+                  </p>
                 </div>
 
                 <div>
@@ -200,14 +214,12 @@ export default function ProjectDetails() {
                   </p>
 
                   <h3 className="text-lg font-bold text-gray-900 mt-2">
-                    {project.deadline}
+                    {project.deadline.slice(0, 10)}
                   </h3>
                 </div>
 
               </div>
-
             </div>
-
 
             {/* REQUIRED SKILLS */}
             <div className="bg-white p-7 rounded-xl shadow-sm border">
@@ -217,30 +229,23 @@ export default function ProjectDetails() {
               </h3>
 
               <div className="flex flex-wrap gap-3">
-
-                {project.skills.map((skill) => (
-
+                {project.skillsRequired.map((skill) => (
                   <span
                     key={skill}
                     className="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium"
                   >
                     {skill}
                   </span>
-
                 ))}
-
               </div>
 
             </div>
-
           </div>
-
 
           {/* PROPOSAL FORM */}
           <div className="bg-white p-7 rounded-xl shadow-sm border h-fit">
 
             {submitted ? (
-
               <div className="text-center py-8">
 
                 <div className="text-5xl mb-5">
@@ -252,7 +257,7 @@ export default function ProjectDetails() {
                 </h2>
 
                 <p className="text-gray-500 mt-3">
-                  Your proposal has been submitted successfully.
+                  Your proposal has been saved successfully.
                 </p>
 
                 <Link
@@ -263,11 +268,9 @@ export default function ProjectDetails() {
                 </Link>
 
               </div>
-
             ) : (
 
               <>
-
                 <h2 className="text-xl font-bold text-gray-900 mb-2">
                   Submit Your Proposal
                 </h2>
@@ -276,12 +279,9 @@ export default function ProjectDetails() {
                   Send your offer to the client.
                 </p>
 
-
                 <form onSubmit={handleSubmit} className="space-y-5">
 
-                  {/* BID AMOUNT */}
                   <div>
-
                     <label className="block font-semibold text-gray-800 mb-2">
                       Your Bid Amount (₹)
                     </label>
@@ -300,13 +300,9 @@ export default function ProjectDetails() {
                       placeholder="Enter your proposed amount"
                       className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
-
                   </div>
 
-
-                  {/* DELIVERY TIME */}
                   <div>
-
                     <label className="block font-semibold text-gray-800 mb-2">
                       Delivery Time (Days)
                     </label>
@@ -325,13 +321,9 @@ export default function ProjectDetails() {
                       placeholder="Example: 15"
                       className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
-
                   </div>
 
-
-                  {/* COVER LETTER */}
                   <div>
-
                     <label className="block font-semibold text-gray-800 mb-2">
                       Cover Letter
                     </label>
@@ -347,32 +339,35 @@ export default function ProjectDetails() {
                         })
                       }
                       placeholder="Explain why you are suitable for this project..."
-                      className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                      className="w-full border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
-
                   </div>
 
+                  {proposalError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg text-sm">
+                      {proposalError}
+                    </div>
+                  )}
 
-                  {/* SUBMIT */}
                   <button
                     type="submit"
-                    className="w-full bg-indigo-600 text-white py-3.5 rounded-lg font-semibold hover:bg-indigo-700 transition"
+                    disabled={submitting}
+                    className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-60 transition"
                   >
-                    Submit Proposal →
+                    {submitting
+                      ? "Submitting..."
+                      : "Submit Proposal"}
                   </button>
 
                 </form>
-
               </>
-
             )}
 
           </div>
-
         </div>
-
       </section>
-
     </main>
   );
 }
+
+
