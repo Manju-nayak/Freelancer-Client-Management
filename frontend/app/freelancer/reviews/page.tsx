@@ -1,162 +1,132 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import React, { useEffect, useState } from "react";
+import { Star, MessageSquare, Award } from "lucide-react";
+import DashboardShell from "@/components/DashboardShell";
+import { apiRequest } from "@/lib/api";
 
-const reviews = [
-  {
-    client: "Rahul Sharma",
-    project: "React Website Development",
-    rating: 5,
-    comment: "Excellent work! Delivered the project on time with great quality.",
-    date: "31 Oct 2026",
-  },
-  {
-    client: "Priya Kumar",
-    project: "UI/UX Dashboard Design",
-    rating: 4,
-    comment: "Good communication and creative design. Satisfied with the work.",
-    date: "28 Oct 2026",
-  },
-  {
-    client: "Arjun Reddy",
-    project: "E-commerce Website",
-    rating: 5,
-    comment: "Very professional and completed all requirements perfectly.",
-    date: "25 Oct 2026",
-  },
-];
+interface ReceivedReview {
+  id: number;
+  project_id: number;
+  rating: number;
+  comment: string;
+  created_at: string;
+  reviewer_name: string;
+  project_title: string;
+}
 
-export default function FreelancerReviews() {
-  const [selectedRating, setSelectedRating] = useState("All");
+export default function FreelancerReviewsPage() {
+  const [reviews, setReviews] = useState<ReceivedReview[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function loadReviews() {
+      try {
+        const res = await apiRequest<{ success: boolean; received: ReceivedReview[] }>(
+          "/api/reviews/my-reviews"
+        );
+        setReviews(res.received || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load reviews");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadReviews();
+  }, []);
 
   const averageRating =
-    reviews.reduce((total, review) => total + review.rating, 0) /
-    reviews.length;
-
-  const filteredReviews =
-    selectedRating === "All"
-      ? reviews
-      : reviews.filter(
-          (review) => review.rating === Number(selectedRating)
-        );
+    reviews.length > 0
+      ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
+      : "5.0";
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 md:p-10">
-      <div className="mx-auto max-w-6xl">
-
-        <div className="mb-8">
-          <Link
-            href="/freelancer/dashboard"
-            className="text-blue-600 hover:underline"
-          >
-            ← Back to Dashboard
-          </Link>
-
-          <h1 className="mt-4 text-3xl font-bold text-gray-900">
-            My Reviews & Ratings
-          </h1>
-
-          <p className="mt-2 text-gray-600">
-            View feedback and ratings received from your clients.
-          </p>
+    <DashboardShell
+      allowedRole="freelancer"
+      title="Client Reviews & Testimonials"
+      subtitle="Evaluations verified and aggregated in PostgreSQL database"
+    >
+      {error && (
+        <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+          {error}
         </div>
+      )}
 
-        {/* Rating Summary */}
-        <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
-
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-gray-500">Average Rating</p>
-            <h2 className="mt-2 text-4xl font-bold text-gray-900">
-              {averageRating.toFixed(1)} / 5
-            </h2>
-            <p className="mt-2 text-xl text-yellow-400">★★★★★</p>
-          </div>
-
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-gray-500">Total Reviews</p>
-            <h2 className="mt-2 text-4xl font-bold text-gray-900">
-              {reviews.length}
-            </h2>
-            <p className="mt-2 text-sm text-gray-500">
-              Reviews received from clients
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-gray-500">Positive Reviews</p>
-            <h2 className="mt-2 text-4xl font-bold text-green-600">
-              {reviews.filter((review) => review.rating >= 4).length}
-            </h2>
-            <p className="mt-2 text-sm text-gray-500">
-              Ratings of 4 stars and above
-            </p>
-          </div>
-
-        </div>
-
-        {/* Reviews List */}
-        <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-
-          <div className="flex flex-col justify-between gap-4 border-b p-6 sm:flex-row sm:items-center">
-            <h2 className="text-xl font-bold text-gray-900">
-              Client Feedback
-            </h2>
-
-            <select
-              value={selectedRating}
-              onChange={(e) => setSelectedRating(e.target.value)}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 outline-none focus:border-blue-500"
-            >
-              <option value="All">All Ratings</option>
-              <option value="5">5 Stars</option>
-              <option value="4">4 Stars</option>
-              <option value="3">3 Stars</option>
-              <option value="2">2 Stars</option>
-              <option value="1">1 Star</option>
-            </select>
-          </div>
-
-          {filteredReviews.length === 0 ? (
-            <div className="p-10 text-center text-gray-500">
-              No reviews found for this rating.
+      {/* Rating Summary Card */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col items-center justify-center">
+            <span className="text-2xl font-bold text-amber-700">{averageRating}</span>
+            <div className="flex items-center gap-0.5">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Star key={s} className="w-2.5 h-2.5 text-amber-500 fill-amber-500" />
+              ))}
             </div>
-          ) : (
-            filteredReviews.map((review, index) => (
-              <div
-                key={index}
-                className="border-b p-6 last:border-b-0"
-              >
-                <div className="flex flex-col justify-between gap-2 sm:flex-row">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {review.client}
-                  </h3>
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Overall Client Satisfaction</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Based on {reviews.length} completed project ratings
+            </p>
+          </div>
+        </div>
 
-                  <span className="text-sm text-gray-400">
-                    {review.date}
-                  </span>
-                </div>
-
-                <p className="mt-1 text-gray-500">
-                  {review.project}
-                </p>
-
-                <div className="mt-3 text-xl text-yellow-400">
-                  {"★".repeat(review.rating)}
-                  <span className="text-gray-300">
-                    {"★".repeat(5 - review.rating)}
-                  </span>
-                </div>
-
-                <p className="mt-3 text-gray-700">
-                  {review.comment}
-                </p>
-              </div>
-            ))
-          )}
-
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1.5">
+            <Award className="w-4 h-4" /> Top Rated Talent
+          </span>
         </div>
       </div>
-    </div>
+
+      {/* Reviews List */}
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100">
+          <h3 className="text-sm font-bold text-slate-900">Verified Client Reviews</h3>
+        </div>
+
+        {loading ? (
+          <div className="py-20 flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs text-slate-500">Querying client feedback from PostgreSQL...</p>
+          </div>
+        ) : reviews.length === 0 ? (
+          <div className="p-12 text-center">
+            <MessageSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-slate-800">No client reviews received yet</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Once you complete project deliverables, clients can submit ratings.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {reviews.map((r) => (
+              <div key={r.id} className="p-6 hover:bg-slate-50/60 transition">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900">{r.project_title}</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Client: <strong className="text-slate-800">{r.reviewer_name}</strong>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+                    <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                    <span className="text-xs font-bold text-amber-900">{r.rating}.0 / 5.0</span>
+                  </div>
+                </div>
+
+                <p className="mt-3 text-xs text-slate-700 leading-relaxed bg-slate-50/70 p-4 rounded-lg border border-slate-100 italic">
+                  &ldquo;{r.comment}&rdquo;
+                </p>
+
+                <span className="text-[11px] text-slate-400 mt-2 block">
+                  Reviewed on {new Date(r.created_at).toLocaleDateString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </DashboardShell>
   );
 }

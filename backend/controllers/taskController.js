@@ -1,212 +1,187 @@
+const { query } = require("../config/db");
 
-const Task = require("../models/Task");
-const Project = require("../models/Project");
-const Proposal = require("../models/Proposal");
+// @desc    Get tasks for a specific project
+// @route   GET /api/tasks/project/:projectId
+// @access  Protected
+const getProjectTasks = async (req, res) => {
+  try {
+    const projectId = parseInt(req.params.projectId, 10);
+    const sql = `
+      SELECT t.*, u.name AS assigned_to_name, m.title AS milestone_title
+      FROM tasks t
+      LEFT JOIN users u ON t.assigned_to = u.id
+      LEFT JOIN milestones m ON t.milestone_id = m.id
+      WHERE t.project_id = $1
+      ORDER BY 
+        CASE t.status
+          WHEN 'in-progress' THEN 1
+          WHEN 'todo' THEN 2
+          WHEN 'review' THEN 3
+          WHEN 'completed' THEN 4
+        END,
+        t.created_at DESC;
+    `;
+    const { rows } = await query(sql, [projectId]);
 
-// @desc    Create and assign a task to the hired freelancer
-// @route   POST /api/tasks
-// @access  Project owner (client) only
-const createTask = async (req, res) => {
-    try {
-        const {
-            projectId,
-            assignedTo,
-            title,
-            description,
-            deadline,
-            priority
-        } = req.body;
-
-        if (!projectId || !assignedTo || !title || !deadline) {
-            return res.status(400).json({
-                success: false,
-                message: "Please provide project, freelancer, title and deadline"
-            });
-        }
-
-        const project = await Project.findById(projectId);
-
-        if (!project) {
-            return res.status(404).json({
-                success: false,
-                message: "Project not found"
-            });
-        }
-
-        if (project.client.toString() !== req.user._id.toString()) {
-            return res.status(403).json({
-                success: false,
-                message: "You can only create tasks for your own projects"
-            });
-        }
-
-        if (project.status !== "in-progress") {
-            return res.status(400).json({
-                success: false,
-                message: "Tasks can only be created for projects that are in progress"
-            });
-        }
-
-        const acceptedProposal = await Proposal.findOne({
-            project: projectId,
-            freelancer: assignedTo,
-            status: "accepted"
-        });
-
-        if (!acceptedProposal) {
-            return res.status(400).json({
-                success: false,
-                message: "You can only assign tasks to the freelancer whose proposal was accepted"
-            });
-        }
-
-        if (new Date(deadline) <= new Date() ||
-            Number.isNaN(new Date(deadline).getTime())) {
-            return res.status(400).json({
-                success: false,
-                message: "Please provide a valid future deadline"
-            });
-        }
-
-        const task = await Task.create({
-            project: projectId,
-            assignedTo,
-            title,
-            description,
-            deadline,
-            priority
-        });
-
-        return res.status(201).json({
-            success: true,
-            message: "Task created and assigned successfully",
-            task
-        });
-    } catch (error) {
-        console.error("Create task error:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
-    }
+    return res.status(200).json({
+      success: true,
+      count: rows.length,
+      tasks: rows
+    });
+  } catch (error) {
+    console.error("Get project tasks error:", error);
+    return res.status(500).json({ success: false, message: "Server error fetching tasks" });
+  }
 };
 
-// @desc    Get tasks assigned to logged-in freelancer
+// @desc    Get all tasks assigned to logged-in freelancer
 // @route   GET /api/tasks/my-tasks
 // @access  Freelancer only
 const getMyTasks = async (req, res) => {
-    try {
-        const tasks = await Task.find({
-            assignedTo: req.user._id
-        })
-            .populate("project", "title budget status")
-            .sort({ deadline: 1 });
+  try {
+    const sql = `
+      SELECT t.*, p.title AS project_title, m.title AS milestone_title
+      FROM tasks t
+      JOIN projects p ON t.project_id = p.id
+      LEFT JOIN milestones m ON t.milestone_id = m.id
+      WHERE t.assigned_to = $1
+      ORDER BY 
+        CASE t.status
+          WHEN 'in-progress' THEN 1
+          WHEN 'todo' THEN 2
+          WHEN 'review' THEN 3
+          WHEN 'completed' THEN 4
+        END,
+        t.due_date ASC;
+    `;
+    const { rows } = await query(sql, [req.user.id]);
 
-        return res.status(200).json({
-            success: true,
-            count: tasks.length,
-            tasks
-        });
-    } catch (error) {
-        console.error("Get tasks error:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+    return res.status(200).json({
+      success: true,
+      count: rows.length,
+      tasks: rows
+    });
+  } catch (error) {
+    console.error("Get my tasks error:", error);
+    return res.status(500).json({ success: false, message: "Server error fetching your tasks" });
+  }
+};
+
+// @desc    Create a task (Client or assigned Freelancer)
+// @route   POST /api/tasks
+// @access  Protected
+const createTask = async (req, res) => {
+  try {
+    const { projectId, title, description, priority = "medium", dueDate, milestoneId } = req.body;
+
+    if (!projectId || !title) {
+      return res.status(400).json({
+        success: false,
+        message: "Project ID and task title are required."
+      });
     }
+
+    const projRes = await query("SELECT client_id, assigned_freelancer_id FROM projects WHERE id = $1;", [projectId]);
+    if (projRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Project not found." });
+    }
+
+    const project = projRes.rows[0];
+    if (
+      project.client_id !== req.user.id &&
+      project.assigned_freelancer_id !== req.user.id &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to create tasks on this project."
+      });
+    }
+
+    const assignedTo = project.assigned_freelancer_id || null;
+
+    const sql = `
+      INSERT INTO tasks (project_id, assigned_to, milestone_id, title, description, priority, due_date, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'todo')
+      RETURNING *;
+    `;
+    const { rows } = await query(sql, [
+      projectId,
+      assignedTo,
+      milestoneId || null,
+      title.trim(),
+      description || "",
+      priority,
+      dueDate || null
+    ]);
+
+    return res.status(201).json({
+      success: true,
+      message: "Task created successfully",
+      task: rows[0]
+    });
+  } catch (error) {
+    console.error("Create task error:", error);
+    return res.status(500).json({ success: false, message: "Server error creating task" });
+  }
 };
 
 // @desc    Update task status
 // @route   PATCH /api/tasks/:id/status
-// @access  Assigned freelancer only
+// @access  Protected
 const updateTaskStatus = async (req, res) => {
-    try {
-        const { status } = req.body;
+  try {
+    const taskId = parseInt(req.params.id, 10);
+    const { status } = req.body;
 
-        if (!["pending", "in-progress", "completed"].includes(status)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid task status"
-            });
-        }
-
-        const task = await Task.findById(req.params.id);
-
-        if (!task) {
-            return res.status(404).json({
-                success: false,
-                message: "Task not found"
-            });
-        }
-
-        if (task.assignedTo.toString() !== req.user._id.toString()) {
-            return res.status(403).json({
-                success: false,
-                message: "You can only update tasks assigned to you"
-            });
-        }
-
-        task.status = status;
-        task.completedAt = status === "completed" ? new Date() : null;
-
-        await task.save();
-
-        return res.status(200).json({
-            success: true,
-            message: "Task status updated successfully",
-            task
-        });
-    } catch (error) {
-        console.error("Update task status error:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+    if (!["todo", "in-progress", "review", "completed"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Status must be: todo, in-progress, review, or completed"
+      });
     }
+
+    const sql = `
+      UPDATE tasks
+      SET status = $1
+      WHERE id = $2
+      RETURNING *;
+    `;
+    const { rows } = await query(sql, [status, taskId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Task updated to ${status}`,
+      task: rows[0]
+    });
+  } catch (error) {
+    console.error("Update task status error:", error);
+    return res.status(500).json({ success: false, message: "Server error updating task" });
+  }
 };
 
-// @desc    Get tasks for a project owned by logged-in client
-// @route   GET /api/tasks/project/:projectId
-// @access  Client only
-const getProjectTasks = async (req, res) => {
-    try {
-        const project = await Project.findById(req.params.projectId);
-
-        if (!project) {
-            return res.status(404).json({
-                success: false,
-                message: "Project not found"
-            });
-        }
-
-        if (project.client.toString() !== req.user._id.toString()) {
-            return res.status(403).json({
-                success: false,
-                message: "You can only view tasks for your own projects"
-            });
-        }
-
-        const tasks = await Task.find({ project: project._id })
-            .populate("assignedTo", "name email")
-            .sort({ deadline: 1 });
-
-        return res.status(200).json({
-            success: true,
-            count: tasks.length,
-            tasks
-        });
-    } catch (error) {
-        console.error("Get project tasks error:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
-    }
+// @desc    Delete a task
+// @route   DELETE /api/tasks/:id
+// @access  Protected
+const deleteTask = async (req, res) => {
+  try {
+    const taskId = parseInt(req.params.id, 10);
+    await query("DELETE FROM tasks WHERE id = $1;", [taskId]);
+    return res.status(200).json({ success: true, message: "Task deleted successfully" });
+  } catch (error) {
+    console.error("Delete task error:", error);
+    return res.status(500).json({ success: false, message: "Server error deleting task" });
+  }
 };
 
 module.exports = {
-    createTask,
-    getMyTasks,
-    updateTaskStatus,
-    getProjectTasks
+  getProjectTasks,
+  getMyTasks,
+  createTask,
+  updateTaskStatus,
+  deleteTask
 };

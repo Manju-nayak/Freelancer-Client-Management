@@ -1,259 +1,342 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import React, { useEffect, useState } from "react";
+import { 
+  CreditCard, 
+  DollarSign, 
+  Plus, 
+  Search, 
+  Filter, 
+  CheckCircle2, 
+  Clock, 
+  ArrowUpRight,
+  ShieldCheck
+} from "lucide-react";
+import DashboardShell from "@/components/DashboardShell";
+import StatusBadge from "@/components/StatusBadge";
+import MetricCard from "@/components/MetricCard";
+import Modal from "@/components/Modal";
+import { apiRequest } from "@/lib/api";
 
-const initialPayments = [
-  {
-    id: "PAY001",
-    project: "React Website Development",
-    freelancer: "Rahul Sharma",
-    amount: 15000,
-    date: "31 Oct 2026",
-    status: "Completed",
-    method: "UPI",
-  },
-  {
-    id: "PAY002",
-    project: "UI/UX Dashboard Design",
-    freelancer: "Priya Kumar",
-    amount: 8000,
-    date: "28 Oct 2026",
-    status: "Pending",
-    method: "Bank Transfer",
-  },
-  {
-    id: "PAY003",
-    project: "E-commerce Website",
-    freelancer: "Arjun Reddy",
-    amount: 12000,
-    date: "25 Oct 2026",
-    status: "Completed",
-    method: "Credit Card",
-  },
-  {
-    id: "PAY004",
-    project: "Portfolio Website",
-    freelancer: "Sneha Patel",
-    amount: 5000,
-    date: "20 Oct 2026",
-    status: "Failed",
-    method: "UPI",
-  },
-];
+interface PaymentRecord {
+  payment_id: number;
+  transaction_reference: string;
+  amount: number;
+  payment_method: string;
+  status: string;
+  created_at: string;
+  project_id: number;
+  project_title: string;
+  freelancer_id: number;
+  freelancer_name: string;
+  milestone_title: string | null;
+}
 
-export default function ClientPayments() {
-  const [payments, setPayments] = useState(initialPayments);
-  const [filter, setFilter] = useState("All");
+interface ClientProjectsResponse {
+  projects: Array<{
+    project_id: number;
+    title: string;
+    freelancer_id: number | null;
+    freelancer_name: string | null;
+  }>;
+}
 
-  const completedPayments = payments
-    .filter((payment) => payment.status === "Completed")
-    .reduce((total, payment) => total + payment.amount, 0);
+export default function ClientPaymentsPage() {
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [totalSpent, setTotalSpent] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filterStatus, setFilterStatus] = useState("All");
 
-  const pendingPayments = payments
-    .filter((payment) => payment.status === "Pending")
-    .reduce((total, payment) => total + payment.amount, 0);
+  // Payment Modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [clientProjects, setClientProjects] = useState<Array<{ project_id: number; title: string; freelancer_id: number | null; freelancer_name: string | null }>>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [paymentAmount, setPaymentAmount] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState<string>("UPI");
+  const [submitting, setSubmitting] = useState(false);
+  const [formSuccess, setFormSuccess] = useState("");
+  const [formError, setFormError] = useState("");
 
-  const filteredPayments =
-    filter === "All"
-      ? payments
-      : payments.filter((payment) => payment.status === filter);
+  const fetchPayments = async () => {
+    try {
+      const res = await apiRequest<{ success: boolean; totalSpent: number; payments: PaymentRecord[] }>(
+        "/api/payments/client"
+      );
+      setPayments(res.payments || []);
+      setTotalSpent(res.totalSpent || 0);
 
-  const downloadReceipt = (payment: (typeof payments)[number]) => {
-    const receipt = `
-FREELANCEHUB - PAYMENT RECEIPT
-
-Payment ID: ${payment.id}
-Project: ${payment.project}
-Freelancer: ${payment.freelancer}
-Amount: Rs. ${payment.amount.toLocaleString("en-IN")}
-Date: ${payment.date}
-Payment Method: ${payment.method}
-Status: ${payment.status}
-
-Thank you for using FreelanceHub!
-`;
-
-    const blob = new Blob([receipt], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${payment.id}-receipt.txt`;
-    link.click();
-
-    URL.revokeObjectURL(url);
+      // Fetch projects for payment modal
+      const projRes = await apiRequest<ClientProjectsResponse>("/api/projects/my-projects");
+      const assignedProjects = (projRes.projects || []).filter((p) => p.freelancer_id !== null);
+      setClientProjects(assignedProjects);
+      if (assignedProjects.length > 0 && !selectedProjectId) {
+        setSelectedProjectId(String(assignedProjects[0].project_id));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load payment records");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  useEffect(() => {
+    fetchPayments();
+  }, []);
+
+  const handleProcessPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setFormError("");
+    setFormSuccess("");
+
+    try {
+      const selectedProject = clientProjects.find((p) => String(p.project_id) === selectedProjectId);
+      if (!selectedProject || !selectedProject.freelancer_id) {
+        throw new Error("Please select an active project with an assigned freelancer.");
+      }
+
+      await apiRequest("/api/payments", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: Number(selectedProjectId),
+          freelancerId: selectedProject.freelancer_id,
+          amount: Number(paymentAmount),
+          paymentMethod,
+        }),
+      });
+
+      setFormSuccess("Payment executed successfully via PostgreSQL ACID transaction!");
+      setTimeout(() => {
+        setIsModalOpen(false);
+        setFormSuccess("");
+        setPaymentAmount("");
+        fetchPayments();
+      }, 1200);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Error executing transaction");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filteredPayments = payments.filter((p) => {
+    if (filterStatus === "All") return true;
+    return p.status.toLowerCase() === filterStatus.toLowerCase();
+  });
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6 md:p-10">
-      <div className="mx-auto max-w-6xl">
+    <DashboardShell
+      allowedRole="client"
+      title="Payments & Invoices"
+      subtitle="Complete transaction ledger query from PostgreSQL view_payment_summaries"
+      actionButton={
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm transition"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Release Escrow / Payment
+        </button>
+      }
+    >
+      {error && (
+        <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+          {error}
+        </div>
+      )}
 
-        {/* Header */}
-        <div className="mb-8">
-          <Link
-            href="/client/dashboard"
-            className="text-blue-600 hover:underline"
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <MetricCard
+          title="Total Capital Deployed"
+          value={`$${totalSpent.toLocaleString()}`}
+          subtitle="All completed transactions"
+          icon={<DollarSign className="w-4 h-4 text-emerald-600" />}
+          trend="Audited"
+          trendPositive={true}
+        />
+        <MetricCard
+          title="Completed Transactions"
+          value={payments.filter((p) => p.status === "completed").length}
+          subtitle="Processed via ACID transactions"
+          icon={<CheckCircle2 className="w-4 h-4 text-teal-600" />}
+        />
+        <MetricCard
+          title="Security & Escrow"
+          value="100% Protected"
+          subtitle="PostgreSQL transactional integrity"
+          icon={<ShieldCheck className="w-4 h-4 text-indigo-600" />}
+        />
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex items-center gap-2 mb-4">
+        {["All", "completed", "pending"].map((st) => (
+          <button
+            key={st}
+            onClick={() => setFilterStatus(st)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition ${
+              filterStatus.toLowerCase() === st.toLowerCase()
+                ? "bg-slate-900 text-white font-semibold"
+                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+            }`}
           >
-            ← Back to Dashboard
-          </Link>
+            {st}
+          </button>
+        ))}
+      </div>
 
-          <h1 className="mt-4 text-3xl font-bold text-gray-900">
-            Payments & Transactions
-          </h1>
-
-          <p className="mt-2 text-gray-600">
-            Track your project payments and transaction history.
-          </p>
-        </div>
-
-        {/* Payment Summary */}
-        <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
-
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-gray-500">Total Payments</p>
-            <h2 className="mt-2 text-3xl font-bold text-gray-900">
-              ₹
-              {payments
-                .reduce((total, payment) => total + payment.amount, 0)
-                .toLocaleString("en-IN")}
-            </h2>
-            <p className="mt-2 text-sm text-gray-500">
-              All recorded transactions
+      {/* Ledger Table */}
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
+        {loading ? (
+          <div className="py-20 flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs text-slate-500">Querying payment ledger...</p>
+          </div>
+        ) : filteredPayments.length === 0 ? (
+          <div className="p-12 text-center">
+            <CreditCard className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-slate-800">No payment transactions found</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Released payments for project milestones will be recorded here.
             </p>
           </div>
-
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-gray-500">Completed Payments</p>
-            <h2 className="mt-2 text-3xl font-bold text-green-600">
-              ₹{completedPayments.toLocaleString("en-IN")}
-            </h2>
-            <p className="mt-2 text-sm text-gray-500">
-              Successfully completed transactions
-            </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/80 text-slate-500 font-semibold uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3.5">Reference ID</th>
+                  <th className="px-6 py-3.5">Project & Scope</th>
+                  <th className="px-6 py-3.5">Freelancer</th>
+                  <th className="px-6 py-3.5">Payment Method</th>
+                  <th className="px-6 py-3.5">Date</th>
+                  <th className="px-6 py-3.5">Amount</th>
+                  <th className="px-6 py-3.5">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredPayments.map((p) => (
+                  <tr key={p.payment_id} className="hover:bg-slate-50/60 transition">
+                    <td className="px-6 py-4 font-mono font-bold text-indigo-700">
+                      {p.transaction_reference}
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="font-semibold text-slate-900">{p.project_title}</p>
+                      {p.milestone_title && (
+                        <p className="text-[11px] text-slate-400">Milestone: {p.milestone_title}</p>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 font-medium text-slate-800">
+                      {p.freelancer_name}
+                    </td>
+                    <td className="px-6 py-4 text-slate-600 font-medium">
+                      {p.payment_method}
+                    </td>
+                    <td className="px-6 py-4 text-slate-500">
+                      {new Date(p.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 font-bold text-slate-900">
+                      ${Number(p.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={p.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        )}
+      </div>
 
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-gray-500">Pending Payments</p>
-            <h2 className="mt-2 text-3xl font-bold text-orange-500">
-              ₹{pendingPayments.toLocaleString("en-IN")}
-            </h2>
-            <p className="mt-2 text-sm text-gray-500">
-              Payments awaiting completion
-            </p>
+      {/* PROCESS PAYMENT MODAL */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Release Milestone Payment"
+        description="Processes payment using a PostgreSQL multi-table ACID transaction."
+      >
+        {formSuccess && (
+          <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-lg flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            {formSuccess}
           </div>
+        )}
+        {formError && (
+          <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-lg">
+            {formError}
+          </div>
+        )}
 
-        </div>
-
-        {/* Transaction History */}
-        <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-
-          <div className="flex flex-col justify-between gap-4 border-b p-6 sm:flex-row sm:items-center">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">
-                Transaction History
-              </h2>
-              <p className="mt-1 text-sm text-gray-500">
-                View and manage your project transactions.
-              </p>
-            </div>
-
+        <form onSubmit={handleProcessPayment} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Select Project</label>
             <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 outline-none focus:border-blue-500"
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              required
+              className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
             >
-              <option value="All">All Payments</option>
-              <option value="Completed">Completed</option>
-              <option value="Pending">Pending</option>
-              <option value="Failed">Failed</option>
+              {clientProjects.length === 0 ? (
+                <option value="">No assigned projects available for payment</option>
+              ) : (
+                clientProjects.map((p) => (
+                  <option key={p.project_id} value={p.project_id}>
+                    {p.title} (Freelancer: {p.freelancer_name})
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[750px] text-left">
-
-              <thead className="bg-gray-50 text-sm text-gray-500">
-                <tr>
-                  <th className="px-6 py-4">Payment ID</th>
-                  <th className="px-6 py-4">Project</th>
-                  <th className="px-6 py-4">Freelancer</th>
-                  <th className="px-6 py-4">Amount</th>
-                  <th className="px-6 py-4">Date</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Receipt</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-gray-100">
-
-                {filteredPayments.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-gray-50">
-
-                    <td className="px-6 py-5 font-medium text-blue-600">
-                      {payment.id}
-                    </td>
-
-                    <td className="px-6 py-5 text-gray-800">
-                      {payment.project}
-                    </td>
-
-                    <td className="px-6 py-5 text-gray-600">
-                      {payment.freelancer}
-                    </td>
-
-                    <td className="px-6 py-5 font-semibold text-gray-900">
-                      ₹{payment.amount.toLocaleString("en-IN")}
-                    </td>
-
-                    <td className="px-6 py-5 text-gray-500">
-                      {payment.date}
-                    </td>
-
-                    <td className="px-6 py-5">
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          payment.status === "Completed"
-                            ? "bg-green-100 text-green-700"
-                            : payment.status === "Pending"
-                            ? "bg-orange-100 text-orange-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {payment.status}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-5">
-                      <button
-                        onClick={() => downloadReceipt(payment)}
-                        className="text-sm font-medium text-blue-600 hover:underline"
-                      >
-                        Download
-                      </button>
-                    </td>
-
-                  </tr>
-                ))}
-
-              </tbody>
-            </table>
-
-            {filteredPayments.length === 0 && (
-              <p className="p-8 text-center text-gray-500">
-                No transactions found.
-              </p>
-            )}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Amount ($)</label>
+              <input
+                type="number"
+                min="1"
+                required
+                placeholder="1500"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Payment Method</label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+              >
+                <option value="UPI">UPI</option>
+                <option value="Escrow">Escrow</option>
+                <option value="Credit Card">Credit Card</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+              </select>
+            </div>
           </div>
 
-          <div className="border-t p-5 text-sm text-gray-500">
-            Showing {filteredPayments.length} transactions
+          <div className="pt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || clientProjects.length === 0}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm disabled:opacity-50"
+            >
+              {submitting ? "Processing Transaction..." : "Confirm & Pay"}
+            </button>
           </div>
-
-        </div>
-
-      </div>
-    </div>
+        </form>
+      </Modal>
+    </DashboardShell>
   );
 }

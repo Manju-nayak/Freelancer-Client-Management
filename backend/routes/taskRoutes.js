@@ -1,49 +1,18 @@
-
 const express = require("express");
 const router = express.Router();
-
 const {
-    createTask,
-    getMyTasks,
-    updateTaskStatus,
-    getProjectTasks
+  getProjectTasks,
+  getMyTasks,
+  createTask,
+  updateTaskStatus,
+  deleteTask
 } = require("../controllers/taskController");
+const { protect } = require("../middleware/authMiddleware");
 
-const {
-    protect,
-    authorizeRoles
-} = require("../middleware/authMiddleware");
-
-// Client creates and assigns a task
-router.post(
-    "/",
-    protect,
-    authorizeRoles("client"),
-    createTask
-);
-
-// Freelancer views assigned tasks
-router.get(
-    "/my-tasks",
-    protect,
-    authorizeRoles("freelancer"),
-    getMyTasks
-);
-
-// Client views tasks belonging to their project
-router.get(
-    "/project/:projectId",
-    protect,
-    authorizeRoles("client"),
-    getProjectTasks
-);
-
-// Freelancer updates assigned task status
-router.patch(
-    "/:id/status",
-    protect,
-    authorizeRoles("freelancer"),
-    updateTaskStatus
-);
+router.get("/project/:projectId", protect, getProjectTasks);
+router.get("/my-tasks", protect, getMyTasks);
+router.post("/", protect, createTask);
+router.patch("/:id/status", protect, updateTaskStatus);
+router.delete("/:id", protect, deleteTask);
 
 module.exports = router;

@@ -1,267 +1,267 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import React, { useEffect, useState } from "react";
+import { User, DollarSign, Clock, Globe, Sparkles, CheckCircle2 } from "lucide-react";
+import DashboardShell from "@/components/DashboardShell";
+import { apiRequest } from "@/lib/api";
 
-export default function FreelancerProfile() {
-  const [profile, setProfile] = useState({
-    fullName: "Arjun Reddy",
-    email: "arjun@gmail.com",
-    phone: "9876543210",
-    title: "Full Stack Web Developer",
-    location: "Bengaluru, India",
-    hourlyRate: "800",
-    experience: "2 Years",
-    skills: "React.js, Node.js, MongoDB, JavaScript, HTML, CSS",
-    portfolio: "https://github.com/arjun",
-    bio: "Passionate full-stack developer with experience in building responsive websites and web applications.",
-  });
-
-  const [saved, setSaved] = useState(false);
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    setProfile({
-      ...profile,
-      [e.target.name]: e.target.value,
-    });
-
-    setSaved(false);
+interface FreelancerProfileData {
+  user: {
+    id: number;
+    name: string;
+    email: string;
+    bio: string;
+    profile: {
+      title: string;
+      hourly_rate: number;
+      experience_years: number;
+      portfolio_url: string;
+      rating_avg: number;
+      rating_count: number;
+      total_earnings: number;
+    };
+    skills: Array<{ id: number; name: string }>;
   };
+}
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+export default function FreelancerProfilePage() {
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const [title, setTitle] = useState("");
+  const [hourlyRate, setHourlyRate] = useState("");
+  const [experienceYears, setExperienceYears] = useState("");
+  const [portfolioUrl, setPortfolioUrl] = useState("");
+  const [skillsInput, setSkillsInput] = useState("");
+  const [totalEarnings, setTotalEarnings] = useState(0);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const res = await apiRequest<FreelancerProfileData>("/api/auth/me");
+        setName(res.user.name || "");
+        setBio(res.user.bio || "");
+        if (res.user.profile) {
+          setTitle(res.user.profile.title || "");
+          setHourlyRate(String(res.user.profile.hourly_rate || ""));
+          setExperienceYears(String(res.user.profile.experience_years || ""));
+          setPortfolioUrl(res.user.profile.portfolio_url || "");
+          setTotalEarnings(res.user.profile.total_earnings || 0);
+        }
+        if (res.user.skills) {
+          setSkillsInput(res.user.skills.map((s) => s.name).join(", "));
+        }
+      } catch (err) {
+        console.error("Failed to load profile:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadProfile();
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaved(true);
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const skillsArray = skillsInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      await apiRequest("/api/profiles", {
+        method: "PUT",
+        body: JSON.stringify({
+          name,
+          bio,
+          title,
+          hourlyRate: Number(hourlyRate),
+          experienceYears: Number(experienceYears),
+          portfolioUrl,
+          skills: skillsArray,
+        }),
+      });
+
+      // Update local storage
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const u = JSON.parse(userStr);
+        u.name = name;
+        localStorage.setItem("user", JSON.stringify(u));
+      }
+
+      setMessage({
+        text: "Profile updated successfully! PostgreSQL pgvector 384-d semantic embedding regenerated.",
+        type: "success",
+      });
+    } catch (err) {
+      setMessage({
+        text: err instanceof Error ? err.message : "Error saving profile",
+        type: "error",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 md:p-10">
-      <div className="mx-auto max-w-5xl">
-
-        {/* Header */}
-        <div className="mb-8">
-          <Link
-            href="/freelancer/dashboard"
-            className="text-blue-600 hover:underline"
+    <DashboardShell
+      allowedRole="freelancer"
+      title="Profile & Professional Credentials"
+      subtitle="Updating skills and experience triggers automatic pgvector embedding recalculation"
+    >
+      <div className="max-w-3xl space-y-6">
+        {message && (
+          <div
+            className={`p-4 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
+              message.type === "success"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-rose-50 border-rose-200 text-rose-800"
+            }`}
           >
-            ← Back to Dashboard
-          </Link>
-
-          <h1 className="mt-4 text-3xl font-bold text-gray-900">
-            My Freelancer Profile
-          </h1>
-
-          <p className="mt-2 text-gray-600">
-            Manage your professional details and showcase your skills.
-          </p>
-        </div>
-
-        {/* Profile Card */}
-        <div className="mb-8 rounded-xl bg-white p-6 shadow-sm">
-          <div className="flex flex-col items-center gap-4 sm:flex-row">
-
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-purple-100 text-3xl font-bold text-purple-700">
-              {profile.fullName.charAt(0).toUpperCase()}
-            </div>
-
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">
-                {profile.fullName}
-              </h2>
-
-              <p className="text-gray-500">{profile.title}</p>
-
-              <p className="mt-1 text-sm text-gray-400">
-                {profile.email}
-              </p>
-            </div>
-
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            {message.text}
           </div>
-        </div>
+        )}
 
-        {/* Profile Form */}
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-xl bg-white p-6 shadow-sm md:p-8"
-        >
+        {loading ? (
+          <div className="py-20 flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs text-slate-500">Loading profile data...</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSave} className="bg-white rounded-2xl border border-slate-200/80 p-8 shadow-xs space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Full Name</label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full text-xs pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+              </div>
 
-          <h2 className="mb-6 text-xl font-bold text-gray-900">
-            Personal Information
-          </h2>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Professional Title / Specialization
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Senior Full-Stack & Cloud Architect"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Hourly Rate ($ / hr)</label>
+                <div className="relative">
+                  <DollarSign className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={hourlyRate}
+                    onChange={(e) => setHourlyRate(e.target.value)}
+                    className="w-full text-xs pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Years of Experience</label>
+                <div className="relative">
+                  <Clock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={experienceYears}
+                    onChange={(e) => setExperienceYears(e.target.value)}
+                    className="w-full text-xs pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+              </div>
+            </div>
 
             <div>
-              <label className="mb-2 block font-medium text-gray-700">
-                Full Name
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Technical Skills & Tools (comma separated)
               </label>
-
               <input
                 type="text"
-                name="fullName"
-                value={profile.fullName}
-                onChange={handleChange}
                 required
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
+                placeholder="React, Next.js, Node.js, PostgreSQL, pgvector, Docker, AWS"
+                value={skillsInput}
+                onChange={(e) => setSkillsInput(e.target.value)}
+                className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
+              <span className="text-[11px] text-slate-400 mt-1 block">
+                These skills are converted into 384-d semantic vectors used to match you with client projects.
+              </span>
             </div>
 
             <div>
-              <label className="mb-2 block font-medium text-gray-700">
-                Email Address
-              </label>
-
-              <input
-                type="email"
-                name="email"
-                value={profile.email}
-                onChange={handleChange}
-                required
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
-              />
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Portfolio or GitHub URL</label>
+              <div className="relative">
+                <Globe className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="url"
+                  placeholder="https://github.com/yourhandle"
+                  value={portfolioUrl}
+                  onChange={(e) => setPortfolioUrl(e.target.value)}
+                  className="w-full text-xs pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="mb-2 block font-medium text-gray-700">
-                Phone Number
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Professional Bio & Value Proposition
               </label>
-
-              <input
-                type="tel"
-                name="phone"
-                value={profile.phone}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
+              <textarea
+                rows={4}
+                placeholder="Highlight your engineering accomplishments, architectural experience, and problem-solving expertise..."
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
             </div>
 
-            <div>
-              <label className="mb-2 block font-medium text-gray-700">
-                Professional Title
-              </label>
-
-              <input
-                type="text"
-                name="title"
-                value={profile.title}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
-              />
+            <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-100 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-indigo-900 font-semibold text-xs">
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                <span>Vector Embedding Generator Active</span>
+              </div>
+              <span className="text-xs text-slate-600 font-medium">
+                Lifetime Earnings: <strong>${Number(totalEarnings).toLocaleString()}</strong>
+              </span>
             </div>
 
-            <div>
-              <label className="mb-2 block font-medium text-gray-700">
-                Location
-              </label>
-
-              <input
-                type="text"
-                name="location"
-                value={profile.location}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
-              />
+            <div className="pt-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={saving}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-6 py-2.5 rounded-lg shadow-sm transition disabled:opacity-50"
+              >
+                {saving ? "Regenerating Vectors & Saving..." : "Update Profile & Embeddings"}
+              </button>
             </div>
-
-            <div>
-              <label className="mb-2 block font-medium text-gray-700">
-                Hourly Rate (₹)
-              </label>
-
-              <input
-                type="number"
-                name="hourlyRate"
-                value={profile.hourlyRate}
-                onChange={handleChange}
-                min="0"
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block font-medium text-gray-700">
-                Experience
-              </label>
-
-              <input
-                type="text"
-                name="experience"
-                value={profile.experience}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block font-medium text-gray-700">
-                Portfolio / GitHub Link
-              </label>
-
-              <input
-                type="url"
-                name="portfolio"
-                value={profile.portfolio}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
-              />
-            </div>
-
-          </div>
-
-          {/* Skills */}
-          <div className="mt-6">
-            <label className="mb-2 block font-medium text-gray-700">
-              Skills
-            </label>
-
-            <textarea
-              name="skills"
-              value={profile.skills}
-              onChange={handleChange}
-              rows={3}
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
-              placeholder="Enter your skills separated by commas"
-            />
-          </div>
-
-          {/* About */}
-          <div className="mt-6">
-            <label className="mb-2 block font-medium text-gray-700">
-              Professional Summary
-            </label>
-
-            <textarea
-              name="bio"
-              value={profile.bio}
-              onChange={handleChange}
-              rows={4}
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
-              placeholder="Describe your experience and expertise..."
-            />
-          </div>
-
-          {/* Save */}
-          <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
-
-            <button
-              type="submit"
-              className="rounded-lg bg-blue-600 px-8 py-3 font-semibold text-white hover:bg-blue-700"
-            >
-              Save Profile
-            </button>
-
-            {saved && (
-              <p className="font-medium text-green-600">
-                ✓ Profile updated successfully!
-              </p>
-            )}
-
-          </div>
-
-        </form>
-
+          </form>
+        )}
       </div>
-    </div>
+    </DashboardShell>
   );
 }

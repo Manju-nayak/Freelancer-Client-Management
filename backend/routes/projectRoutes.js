@@ -1,52 +1,45 @@
-
 const express = require("express");
 const router = express.Router();
-
 const {
-    createProject,
-    getAllProjects,
-    getMyProjects,
-    getProjectById,
-    updateProject,
-    deleteProject
+  getAllProjects,
+  getProjectById,
+  getMyProjects,
+  createProject,
+  updateProject,
+  deleteProject,
+  getFreelancerRecommendations,
+  getProjectFreelancers
 } = require("../controllers/projectController");
+const { protect, authorizeRoles } = require("../middleware/authMiddleware");
 
-const {
-    protect,
-    authorizeRoles
-} = require("../middleware/authMiddleware");
+// Public / General browse
+router.get("/", getAllProjects);
 
-// Create a project - Client only
-router.post("/", protect, authorizeRoles("client"), createProject);
-
-// Get all open projects - Logged-in users
-router.get("/", protect, getAllProjects);
-
-// Get projects posted by logged-in client
+// Vector database recommendations
 router.get(
-    "/my-projects",
-    protect,
-    authorizeRoles("client"),
-    getMyProjects
+  "/recommendations",
+  protect,
+  authorizeRoles("freelancer"),
+  getFreelancerRecommendations
 );
 
-// Get a single project
-router.get("/:id", protect, getProjectById);
+// My projects (client posted or freelancer assigned)
+router.get("/my-projects", protect, getMyProjects);
 
-// Update a project - Client only (ownership checked in controller)
-router.put(
-    "/:id",
-    protect,
-    authorizeRoles("client"),
-    updateProject
+// Project detail
+router.get("/:id", getProjectById);
+
+// Vector database recommendations for a project (client only)
+router.get(
+  "/:id/freelancers",
+  protect,
+  authorizeRoles("client", "admin"),
+  getProjectFreelancers
 );
 
-// Delete a project - Client only (ownership checked in controller)
-router.delete(
-    "/:id",
-    protect,
-    authorizeRoles("client"),
-    deleteProject
-);
+// Project management (client only)
+router.post("/", protect, authorizeRoles("client"), createProject);
+router.put("/:id", protect, authorizeRoles("client", "admin"), updateProject);
+router.delete("/:id", protect, authorizeRoles("client", "admin"), deleteProject);
 
 module.exports = router;

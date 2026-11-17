@@ -1,197 +1,160 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { FileText, Clock, DollarSign, Calendar, ArrowRight } from "lucide-react";
+import DashboardShell from "@/components/DashboardShell";
+import StatusBadge from "@/components/StatusBadge";
+import { apiRequest } from "@/lib/api";
 
-const proposals = [
-  {
-    id: 1,
-    title: "React Website Development",
-    client: "Tech Solutions",
-    budget: "₹25,000",
-    submitted: "28 Oct 2026",
-    status: "Pending",
-  },
-  {
-    id: 2,
-    title: "Machine Learning Model",
-    client: "Data Innovations",
-    budget: "₹40,000",
-    submitted: "27 Oct 2026",
-    status: "Accepted",
-  },
-  {
-    id: 3,
-    title: "UI/UX Design",
-    client: "Creative Studio",
-    budget: "₹15,000",
-    submitted: "27 Oct 2026",
-    status: "Rejected",
-  },
-];
+interface FreelancerProposal {
+  id: number;
+  project_id: number;
+  project_title: string;
+  project_budget: number;
+  project_deadline: string;
+  project_status: string;
+  client_name: string;
+  proposed_budget: number;
+  estimated_duration: string;
+  cover_letter: string;
+  status: string;
+  created_at: string;
+}
 
-export default function ProposalsPage() {
+export default function FreelancerProposalsPage() {
+  const [proposals, setProposals] = useState<FreelancerProposal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState("All");
+
+  useEffect(() => {
+    async function fetchProposals() {
+      try {
+        const res = await apiRequest<{ success: boolean; proposals: FreelancerProposal[] }>(
+          "/api/proposals/my-proposals"
+        );
+        setProposals(res.proposals || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load proposals");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchProposals();
+  }, []);
+
+  const filtered = proposals.filter((p) => {
+    if (filter === "All") return true;
+    return p.status.toLowerCase() === filter.toLowerCase();
+  });
+
   return (
-    <main className="min-h-screen bg-slate-50 px-5 py-10 md:px-10">
+    <DashboardShell
+      allowedRole="freelancer"
+      title="My Proposals"
+      subtitle="Track the status of all your submitted bids and client assignments"
+      actionButton={
+        <Link
+          href="/freelancer/projects"
+          className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm transition"
+        >
+          Find More Projects
+        </Link>
+      }
+    >
+      {error && (
+        <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+          {error}
+        </div>
+      )}
 
-      <div className="max-w-6xl mx-auto">
-
-        {/* HEADER */}
-
-        <div className="flex justify-between items-center mb-10">
-
-          <Link
-            href="/"
-            className="text-2xl font-bold text-indigo-600"
+      {/* Filter Tabs */}
+      <div className="flex items-center gap-2 mb-6">
+        {["All", "pending", "accepted", "rejected"].map((st) => (
+          <button
+            key={st}
+            onClick={() => setFilter(st)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition ${
+              filter.toLowerCase() === st.toLowerCase()
+                ? "bg-slate-900 text-white font-semibold"
+                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+            }`}
           >
-            FreelanceHub.
-          </Link>
-
-          <Link
-            href="/freelancer/dashboard"
-            className="text-indigo-600 font-semibold hover:text-indigo-800"
-          >
-            ← Dashboard
-          </Link>
-
-        </div>
-
-        {/* PAGE TITLE */}
-
-        <div className="mb-8">
-
-          <h1 className="text-3xl font-bold text-gray-900">
-            My Proposals
-          </h1>
-
-          <p className="text-gray-500 mt-2">
-            Track all your submitted project proposals.
-          </p>
-
-        </div>
-
-        {/* SUMMARY CARDS */}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border">
-            <p className="text-gray-500">Total Proposals</p>
-            <h2 className="text-3xl font-bold text-indigo-600 mt-2">
-              {proposals.length}
-            </h2>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border">
-            <p className="text-gray-500">Accepted</p>
-            <h2 className="text-3xl font-bold text-green-600 mt-2">
-              {proposals.filter(p => p.status === "Accepted").length}
-            </h2>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border">
-            <p className="text-gray-500">Pending</p>
-            <h2 className="text-3xl font-bold text-orange-500 mt-2">
-              {proposals.filter(p => p.status === "Pending").length}
-            </h2>
-          </div>
-
-        </div>
-
-        {/* PROPOSAL LIST */}
-
-        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-
-          <div className="p-6 border-b">
-
-            <h2 className="text-xl font-bold text-gray-900">
-              Submitted Proposals
-            </h2>
-
-          </div>
-
-          <div className="overflow-x-auto">
-
-            <table className="w-full text-left">
-
-              <thead className="bg-slate-50">
-
-                <tr className="text-gray-600 text-sm">
-
-                  <th className="p-5">Project</th>
-                  <th className="p-5">Client</th>
-                  <th className="p-5">Your Budget</th>
-                  <th className="p-5">Submitted Date</th>
-                  <th className="p-5">Status</th>
-
-                </tr>
-
-              </thead>
-
-              <tbody>
-
-                {proposals.map((proposal) => (
-
-                  <tr
-                    key={proposal.id}
-                    className="border-t hover:bg-slate-50 transition"
-                  >
-
-                    <td className="p-5 font-semibold text-gray-900">
-                      {proposal.title}
-                    </td>
-
-                    <td className="p-5 text-gray-600">
-                      {proposal.client}
-                    </td>
-
-                    <td className="p-5 font-semibold text-gray-900">
-                      {proposal.budget}
-                    </td>
-
-                    <td className="p-5 text-gray-600">
-                      {proposal.submitted}
-                    </td>
-
-                    <td className="p-5">
-
-                      <span
-                        className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                          proposal.status === "Accepted"
-                            ? "bg-green-100 text-green-700"
-                            : proposal.status === "Pending"
-                            ? "bg-orange-100 text-orange-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {proposal.status}
-                      </span>
-
-                    </td>
-
-                  </tr>
-
-                ))}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-        </div>
-
-        {/* BOTTOM BUTTON */}
-
-        <div className="mt-8 flex justify-end">
-
-          <Link
-            href="/freelancer/projects"
-            className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-indigo-700 transition"
-          >
-            Browse More Projects →
-          </Link>
-
-        </div>
-
+            {st}
+          </button>
+        ))}
       </div>
 
-    </main>
+      {loading ? (
+        <div className="py-20 flex flex-col items-center justify-center gap-3">
+          <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-slate-500">Querying proposals from PostgreSQL database...</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+          <FileText className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm font-semibold text-slate-800">No proposals found</p>
+          <p className="text-xs text-slate-500 mt-1">
+            Browse available projects and submit bids to start working.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filtered.map((prop) => (
+            <div
+              key={prop.id}
+              className="bg-white rounded-xl border border-slate-200/80 p-6 shadow-xs hover:border-slate-300 transition flex flex-col md:flex-row md:items-start justify-between gap-6"
+            >
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-slate-900">
+                    <Link
+                      href={`/freelancer/projects/${prop.project_id}`}
+                      className="hover:text-indigo-600 transition"
+                    >
+                      {prop.project_title}
+                    </Link>
+                  </h3>
+                  <StatusBadge status={prop.status} />
+                </div>
+
+                <p className="text-xs text-slate-700 leading-relaxed bg-slate-50/70 p-4 rounded-lg border border-slate-100 whitespace-pre-line">
+                  {prop.cover_letter}
+                </p>
+
+                <div className="flex flex-wrap items-center gap-y-2 gap-x-6 text-xs text-slate-500 pt-2 border-t border-slate-100">
+                  <span className="flex items-center gap-1">
+                    <DollarSign className="w-3.5 h-3.5 text-slate-400" />
+                    Your Bid: <strong className="text-slate-900">${Number(prop.proposed_budget).toLocaleString()}</strong>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    Delivery Timeline: <strong className="text-slate-900">{prop.estimated_duration}</strong>
+                  </span>
+                  <span>Client: <strong className="text-slate-700">{prop.client_name}</strong></span>
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    Submitted: {new Date(prop.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+
+              {prop.status === "accepted" && (
+                <div className="shrink-0 self-center md:self-start">
+                  <Link
+                    href="/freelancer/tasks"
+                    className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold px-4 py-2 rounded-lg hover:bg-emerald-100 transition"
+                  >
+                    Go to Work Tasks
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </DashboardShell>
   );
 }

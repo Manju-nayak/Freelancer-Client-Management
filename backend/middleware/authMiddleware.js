@@ -1,99 +1,80 @@
-
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const { query } = require("../config/db");
 
-// Verify JWT and authenticate user
+const JWT_SECRET = process.env.JWT_SECRET || "freelancehub_super_secret_jwt_key_2026";
+
+/**
+ * Protect routes: verifies Bearer token and attaches user to req.user
+ */
 const protect = async (req, res, next) => {
-    try {
-        let token;
+  let token;
 
-        // Read token from Authorization header
-        if (
-            req.headers.authorization &&
-            req.headers.authorization.startsWith("Bearer ")
-        ) {
-            token = req.headers.authorization.split(" ")[1];
-        }
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer ")
+  ) {
+    token = req.headers.authorization.split(" ")[1];
+  }
 
-        if (!token) {
-            return res.status(401).json({
-                success: false,
-                message: "Not authorized. Please login."
-            });
-        }
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: "Not authorized to access this route. No token provided."
+    });
+  }
 
-        // Verify token
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
 
-        // Find user
-        const user = await User.findById(decoded.id).select("-password");
+    const { rows } = await query(
+      "SELECT id, name, email, role, avatar_url, bio, is_active FROM users WHERE id = $1;",
+      [decoded.id]
+    );
 
-        if (!user || !user.isActive) {
-            return res.status(401).json({
-                success: false,
-                message: "User not found or account inactive"
-            });
-        }
-
-        req.user = user;
-
-        next();
-
-    } catch (error) {
-        return res.status(401).json({
-            success: false,
-            message: "Invalid or expired token"
-        });
+    if (rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: "User account no longer exists."
+      });
     }
+
+    const user = rows[0];
+
+    if (!user.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: "Account has been deactivated. Please contact support."
+      });
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error("Auth middleware error:", error.message);
+    return res.status(401).json({
+      success: false,
+      message: "Not authorized. Invalid or expired token."
+    });
+  }
 };
 
-// Role-based authorization
+/**
+ * Authorize role-based access control (RBAC)
+ */
 const authorizeRoles = (...roles) => {
-    return (req, res, next) => {
-        if (!req.user) {
-            return res.status(401).json({
-                success: false,
-                message: "Authentication required"
-            });
-        }
-
-        if (!roles.includes(req.user.role)) {
-            return res.status(403).json({
-                success: false,
-                message: "You do not have permission to access this resource"
-            });
-        }
-
-        next();
-    };
-};
-
-// GET LOGGED-IN USER
-const getMe = async (req, res) => {
-    try {
-        return res.status(200).json({
-            success: true,
-            user: {
-                id: req.user._id,
-                name: req.user.name,
-                email: req.user.email,
-                role: req.user.role,
-                profileImage: req.user.profileImage,
-                bio: req.user.bio
-            }
-        });
-
-    } catch (error) {
-        console.error("Get user error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Server error"
-        });
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: `Role '${req.user ? req.user.role : "unknown"}' is not authorized to access this resource.`
+      });
     }
+    next();
+  };
 };
 
-module.exports = { protect, authorizeRoles };
+module.exports = {
+  protect,
+  authorizeRoles,
+  JWT_SECRET
+};

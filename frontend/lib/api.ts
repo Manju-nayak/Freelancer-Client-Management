@@ -1,4 +1,3 @@
-
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -26,16 +25,42 @@ export async function apiRequest<T>(
     }
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...requestOptions,
-    headers,
-  });
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      ...requestOptions,
+      headers,
+    });
 
-  const data = await response.json();
+    const data = await response.json();
 
-  if (!response.ok) {
-    throw new Error(data.message || "Something went wrong");
+    if (!response.ok) {
+      throw new Error(data.message || `Request failed with status ${response.status}`);
+    }
+
+    return data as T;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("An unexpected network or server error occurred");
   }
+}
 
-  return data as T;
+export function getCurrentUser() {
+  if (typeof window === "undefined") return null;
+  const userStr = localStorage.getItem("user");
+  if (!userStr) return null;
+  try {
+    return JSON.parse(userStr);
+  } catch {
+    return null;
+  }
+}
+
+export function logout() {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    window.location.href = "/login";
+  }
 }
