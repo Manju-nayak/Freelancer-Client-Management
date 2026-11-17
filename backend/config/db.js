@@ -58,15 +58,55 @@ async function getDB() {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  console.log(`Initializing persistent PostgreSQL (PGlite) engine at ${dataDir}...`);
-  pgliteInstance = new PGlite(dataDir, {
-    extensions: { vector }
-  });
+  try {
+    console.log(`Initializing persistent PostgreSQL (PGlite) engine at ${dataDir}...`);
+    pgliteInstance = new PGlite(dataDir, {
+      extensions: { vector }
+    });
 
-  await pgliteInstance.waitReady;
-  isEmbedded = true;
-  console.log("Persistent PostgreSQL engine with pgvector initialized successfully!");
-  return { type: "pglite", client: pgliteInstance };
+    await pgliteInstance.waitReady;
+    isEmbedded = true;
+    console.log("Persistent PostgreSQL engine with pgvector initialized successfully!");
+    return { type: "pglite", client: pgliteInstance };
+  } catch (initErr) {
+    console.warn("Detected interrupted PostgreSQL storage (likely from an abrupt system reboot or ungraceful termination):", initErr.message);
+    console.log("Auto-repairing database: cleaning stale locks/WAL and re-applying schema...");
+
+    try {
+      if (fs.existsSync(dataDir)) {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+      }
+      fs.mkdirSync(dataDir, { recursive: true });
+    } catch (cleanupErr) {
+      console.error("Cleanup error:", cleanupErr.message);
+    }
+
+    pgliteInstance = new PGlite(dataDir, {
+      extensions: { vector }
+    });
+
+    await pgliteInstance.waitReady;
+    isEmbedded = true;
+
+    try {
+      const schemaPath = path.resolve(__dirname, "../database/schema.sql");
+      if (fs.existsSync(schemaPath)) {
+        const schemaSql = fs.readFileSync(schemaPath, "utf8");
+        await pgliteInstance.exec(schemaSql);
+        console.log("Schema DDL applied successfully during auto-repair.");
+      }
+      const seedFn = require("../database/seed");
+      if (typeof seedFn === "function") {
+        await seedFn();
+        console.log("Seed data populated successfully during auto-repair.");
+      }
+    } catch (repairErr) {
+      console.error("Auto-repair seeding warning:", repairErr.message);
+    }
+
+    console.log("Persistent PostgreSQL engine repaired and ready!");
+    return { type: "pglite", client: pgliteInstance };
+  }
 }
 
 /**
